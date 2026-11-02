@@ -1,6 +1,6 @@
 """
 PDF slide generation from structured frontend data.
-Restores the original blue-gradient design, adapted for the new data models.
+Keeps the original gradient design, with theme colours taken from ReportPalette.
 """
 import base64
 import json
@@ -14,7 +14,7 @@ from typing import List
 from PyPDF2 import PdfMerger
 from playwright.async_api import async_playwright
 
-from financial_models import GeneratePDFRequest, SlidePayload, ChartData
+from financial_models import GeneratePDFRequest, ReportPalette, SlidePayload, ChartData
 
 
 # ── Logo helper ───────────────────────────────────────────────────────────────
@@ -40,14 +40,28 @@ def _fmt_value(v: float) -> str:
     return f"${v:,.0f}"
 
 
+def _rgb(hex_colour: str) -> str:
+    """
+    Convert a #rrggbb colour to "r,g,b", for use inside rgba().
+
+    Args:
+        hex_colour: A colour already validated by ReportPalette.
+
+    Returns:
+        The red, green and blue values as a comma-separated string.
+    """
+    return ",".join(str(int(hex_colour[i:i + 2], 16)) for i in (1, 3, 5))
+
+
 # ── Title slide ───────────────────────────────────────────────────────────────
 
-def _title_html(req: GeneratePDFRequest) -> str:
+def _title_html(req: GeneratePDFRequest, p: ReportPalette) -> str:
+    secondary_rgb = _rgb(p.secondary)
     logo_src = _get_logo_src(req.logo_url, req.dash_logo)
     custom_logo = bool(req.logo_url and str(req.logo_url).strip())
 
     if req.dash_logo:
-        logo_wrapper = 'width:56px;height:56px;background:white;border-radius:16px;box-shadow:0 25px 50px -12px rgba(59,130,246,0.3);padding:8px;display:flex;align-items:center;justify-content:center;margin-right:16px;'
+        logo_wrapper = f'width:56px;height:56px;background:white;border-radius:16px;box-shadow:0 25px 50px -12px rgba({secondary_rgb},0.3);padding:8px;display:flex;align-items:center;justify-content:center;margin-right:16px;'
         logo_img = 'display:block;width:100%;height:100%;object-fit:contain;'
         show_logo = bool(logo_src)
     elif custom_logo:
@@ -77,24 +91,24 @@ def _title_html(req: GeneratePDFRequest) -> str:
 <meta charset="UTF-8">
 <style>
 :root {{
-  --bg-gradient: linear-gradient(135deg,#061551 0%,#0a4d8f 50%,#0e68b3 100%);
-  --accent-gradient: linear-gradient(135deg,#3b82f6 0%,#06b6d4 100%);
+  --bg-gradient: linear-gradient(135deg,{p.cover_start} 0%,{p.cover_mid} 50%,{p.cover_end} 100%);
+  --accent-gradient: linear-gradient(135deg,{p.secondary} 0%,{p.accent_strong} 100%);
   --white: #ffffff;
-  --blue-100: #dbeafe; --blue-200: #bfdbfe; --blue-300: #93c5fd;
-  --cyan-400: #22d3ee; --cyan-300: #67e8f9;
+  --text-soft: {p.text_soft}; --text-mid: {p.text_mid}; --text-muted: {p.text_muted};
+  --accent: {p.accent}; --accent-soft: {p.accent_soft};
 }}
 body {{ margin:0; width:1280px; height:720px; overflow:hidden;
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
   color:#fff; }}
 .container {{ width:1280px; height:720px; background:var(--bg-gradient); position:relative; overflow:hidden; }}
 .bg-blob {{ position:absolute; border-radius:50%; filter:blur(64px); }}
-.blob-1 {{ top:-10%; right:-5%; width:500px; height:500px; background:#60a5fa; opacity:.15; }}
-.blob-2 {{ bottom:-10%; left:-5%; width:450px; height:450px; background:#22d3ee; opacity:.15; }}
-.blob-3 {{ top:30%; right:10%; width:300px; height:300px; background:#3b82f6; opacity:.10; }}
+.blob-1 {{ top:-10%; right:-5%; width:500px; height:500px; background:{p.light}; opacity:.15; }}
+.blob-2 {{ bottom:-10%; left:-5%; width:450px; height:450px; background:{p.accent}; opacity:.15; }}
+.blob-3 {{ top:30%; right:10%; width:300px; height:300px; background:{p.secondary}; opacity:.10; }}
 .geometric {{ position:absolute; border:2px solid; opacity:.2; }}
 .glass {{ background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); }}
 .badge {{ display:inline-flex; align-items:center; padding:8px 20px; border-radius:9999px; }}
-.dot {{ width:8px; height:8px; background:var(--cyan-400); border-radius:50%; margin-right:8px; }}
+.dot {{ width:8px; height:8px; background:var(--accent); border-radius:50%; margin-right:8px; }}
 </style>
 </head>
 <body>
@@ -102,8 +116,8 @@ body {{ margin:0; width:1280px; height:720px; overflow:hidden;
   <div class="bg-blob blob-1"></div>
   <div class="bg-blob blob-2"></div>
   <div class="bg-blob blob-3"></div>
-  <div class="geometric" style="top:15%;right:20%;width:64px;height:64px;border-color:#60a5fa;transform:rotate(45deg);"></div>
-  <div class="geometric" style="bottom:25%;left:15%;width:80px;height:80px;border-color:#22d3ee;transform:rotate(12deg);"></div>
+  <div class="geometric" style="top:15%;right:20%;width:64px;height:64px;border-color:{p.light};transform:rotate(45deg);"></div>
+  <div class="geometric" style="bottom:25%;left:15%;width:80px;height:80px;border-color:{p.accent};transform:rotate(12deg);"></div>
 
   <!-- Header -->
   <div style="position:absolute;top:0;left:0;right:0;padding:32px 64px;display:flex;justify-content:space-between;align-items:center;z-index:20;">
@@ -111,11 +125,11 @@ body {{ margin:0; width:1280px; height:720px; overflow:hidden;
       {logo_html}
       <div>
         <div style="font-size:24px;font-weight:700;color:white;letter-spacing:-.025em;">{company}</div>
-        <div style="font-size:12px;color:var(--blue-300);font-weight:500;letter-spacing:.05em;text-transform:uppercase;">FINANCIAL INTELLIGENCE</div>
+        <div style="font-size:12px;color:var(--text-muted);font-weight:500;letter-spacing:.05em;text-transform:uppercase;">FINANCIAL INTELLIGENCE</div>
       </div>
     </div>
     <div class="glass" style="padding:8px 24px;border-radius:9999px;">
-      <span style="color:var(--blue-200);font-weight:600;font-size:14px;">{org}</span>
+      <span style="color:var(--text-mid);font-weight:600;font-size:14px;">{org}</span>
     </div>
   </div>
 
@@ -124,23 +138,23 @@ body {{ margin:0; width:1280px; height:720px; overflow:hidden;
     <div style="max-width:1024px;">
       <div class="glass badge" style="margin-bottom:32px;">
         <div class="dot"></div>
-        <span style="color:var(--cyan-300);font-weight:700;font-size:14px;letter-spacing:.1em;text-transform:uppercase;">Financial Report</span>
+        <span style="color:var(--accent-soft);font-weight:700;font-size:14px;letter-spacing:.1em;text-transform:uppercase;">Financial Report</span>
       </div>
       <h1 style="font-size:72px;font-weight:900;color:white;line-height:1.1;margin:0 0 32px;letter-spacing:-.025em;">{req.report_title}</h1>
-      {"" if not subtitle else f'<div style="display:flex;align-items:center;margin-bottom:40px;"><div style="width:6px;height:64px;background:var(--accent-gradient);border-radius:9999px;margin-right:20px;box-shadow:0 10px 15px -3px rgba(59,130,246,.5);"></div><h2 style="font-size:30px;font-weight:700;color:var(--blue-100);line-height:1.25;margin:0;">{subtitle}</h2></div>'}
+      {"" if not subtitle else f'<div style="display:flex;align-items:center;margin-bottom:40px;"><div style="width:6px;height:64px;background:var(--accent-gradient);border-radius:9999px;margin-right:20px;box-shadow:0 10px 15px -3px rgba({secondary_rgb},.5);"></div><h2 style="font-size:30px;font-weight:700;color:var(--text-soft);line-height:1.25;margin:0;">{subtitle}</h2></div>'}
       <!-- Metadata row -->
       <div style="display:flex;align-items:center;gap:16px;">
         <div class="glass" style="display:flex;align-items:center;padding:12px 20px;border-radius:12px;">
-          <svg style="width:24px;height:24px;color:var(--cyan-400);margin-right:12px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-          <div><div style="font-size:12px;color:var(--blue-300);font-weight:500;">Report Date</div><div style="font-weight:700;color:white;">{date}</div></div>
+          <svg style="width:24px;height:24px;color:var(--accent);margin-right:12px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          <div><div style="font-size:12px;color:var(--text-muted);font-weight:500;">Report Date</div><div style="font-weight:700;color:white;">{date}</div></div>
         </div>
         <div class="glass" style="display:flex;align-items:center;padding:12px 20px;border-radius:12px;">
-          <svg style="width:24px;height:24px;color:var(--cyan-400);margin-right:12px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-          <div><div style="font-size:12px;color:var(--blue-300);font-weight:500;">Document Type</div><div style="font-weight:700;color:white;">Executive Summary</div></div>
+          <svg style="width:24px;height:24px;color:var(--accent);margin-right:12px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          <div><div style="font-size:12px;color:var(--text-muted);font-weight:500;">Document Type</div><div style="font-weight:700;color:white;">Executive Summary</div></div>
         </div>
         <div class="glass" style="display:flex;align-items:center;padding:12px 20px;border-radius:12px;">
-          <svg style="width:24px;height:24px;color:var(--cyan-400);margin-right:12px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
-          <div><div style="font-size:12px;color:var(--blue-300);font-weight:500;">Prepared By</div><div style="font-weight:700;color:white;">{prepared_by}</div></div>
+          <svg style="width:24px;height:24px;color:var(--accent);margin-right:12px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+          <div><div style="font-size:12px;color:var(--text-muted);font-weight:500;">Prepared By</div><div style="font-weight:700;color:white;">{prepared_by}</div></div>
         </div>
       </div>
     </div>
@@ -148,12 +162,12 @@ body {{ margin:0; width:1280px; height:720px; overflow:hidden;
 
   <!-- Footer -->
   <div style="position:absolute;bottom:0;left:0;right:0;padding:24px 64px;background:linear-gradient(to right,rgba(0,0,0,.4),rgba(0,0,0,.3),rgba(0,0,0,.4));border-top:1px solid rgba(255,255,255,.1);display:flex;justify-content:space-between;align-items:center;">
-    <div style="display:flex;align-items:center;color:var(--blue-100);font-size:14px;gap:48px;">
-      {"" if not email else f'<div style="display:flex;align-items:center;"><svg style="width:16px;height:16px;color:var(--cyan-400);margin-right:8px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg><span style="font-weight:600;">{email}</span></div>'}
-      {"" if not website else f'<div style="display:flex;align-items:center;"><svg style="width:16px;height:16px;color:var(--cyan-400);margin-right:8px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg><span style="font-weight:600;">{website}</span></div>'}
+    <div style="display:flex;align-items:center;color:var(--text-soft);font-size:14px;gap:48px;">
+      {"" if not email else f'<div style="display:flex;align-items:center;"><svg style="width:16px;height:16px;color:var(--accent);margin-right:8px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg><span style="font-weight:600;">{email}</span></div>'}
+      {"" if not website else f'<div style="display:flex;align-items:center;"><svg style="width:16px;height:16px;color:var(--accent);margin-right:8px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg><span style="font-weight:600;">{website}</span></div>'}
     </div>
     <div style="display:flex;align-items:center;">
-      <div style="width:8px;height:8px;background:var(--cyan-400);border-radius:50%;margin-right:12px;"></div>
+      <div style="width:8px;height:8px;background:var(--accent);border-radius:50%;margin-right:12px;"></div>
       <span style="font-size:14px;opacity:.7;color:white;">Confidential</span>
     </div>
   </div>
@@ -174,8 +188,12 @@ def _kpi_chart_slide_html(
     description: str,
     bullet_points: List[str],
     chart_data: ChartData,
+    p: ReportPalette,
     breadcrumb: str | None = None,
 ) -> str:
+    light_rgb = _rgb(p.light)
+    muted_rgb = _rgb(p.text_muted)
+    primary_rgb = _rgb(p.primary)
     labels_json = json.dumps(chart_data.labels)
     values_json = json.dumps(chart_data.values)
     chart_type  = chart_data.chart_type
@@ -194,7 +212,7 @@ def _kpi_chart_slide_html(
         f'''<div style="display:flex;align-items:start;background:white;border-radius:8px;padding:12px;
                 box-shadow:0 1px 2px rgba(0,0,0,.05);margin-bottom:8px;">
               <div style="flex-shrink:0;width:24px;height:24px;border-radius:8px;
-                  background:linear-gradient(135deg,#3b82f6,#2563eb);display:flex;align-items:center;
+                  background:linear-gradient(135deg,{p.secondary},{p.primary});display:flex;align-items:center;
                   justify-content:center;margin-right:12px;">
                 <svg style="width:12px;height:12px;color:white;" fill="currentColor" viewBox="0 0 20 20">
                   <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
@@ -206,19 +224,19 @@ def _kpi_chart_slide_html(
     ])
 
     breadcrumb_html = (
-        f'<div style="display:inline-block;padding:4px 12px;background:rgba(96,165,250,.2);'
-        f'border-radius:9999px;margin-bottom:8px;border:1px solid rgba(147,197,253,.3);">'
-        f'<span style="color:#dbeafe;font-weight:700;font-size:11px;text-transform:uppercase;'
+        f'<div style="display:inline-block;padding:4px 12px;background:rgba({light_rgb},.2);'
+        f'border-radius:9999px;margin-bottom:8px;border:1px solid rgba({muted_rgb},.3);">'
+        f'<span style="color:{p.text_soft};font-weight:700;font-size:11px;text-transform:uppercase;'
         f'letter-spacing:.08em;">{breadcrumb}</span></div>'
         if breadcrumb else
-        '<div style="display:inline-block;padding:6px 16px;background:rgba(96,165,250,.2);'
-        'border-radius:9999px;margin-bottom:16px;border:1px solid rgba(147,197,253,.3);">'
-        '<span style="color:#dbeafe;font-weight:700;font-size:12px;text-transform:uppercase;'
+        f'<div style="display:inline-block;padding:6px 16px;background:rgba({light_rgb},.2);'
+        f'border-radius:9999px;margin-bottom:16px;border:1px solid rgba({muted_rgb},.3);">'
+        f'<span style="color:{p.text_soft};font-weight:700;font-size:12px;text-transform:uppercase;'
         'letter-spacing:.1em;">METRIC ANALYSIS</span></div>'
     )
 
     # Bar chart config for the secondary chart on the right panel
-    bar_bg = "'#3b82f6'" if chart_type == "bar" else "'#2563eb'"
+    bar_bg = f"'{p.secondary}'" if chart_type == "bar" else f"'{p.primary}'"
 
     return f"""<!DOCTYPE html>
 <html>
@@ -228,7 +246,7 @@ def _kpi_chart_slide_html(
 <script src="{_CDN_DATALABELS}"></script>
 <style>
   @keyframes slideIn {{ from {{ opacity:0; transform:translateY(20px); }} to {{ opacity:1; transform:translateY(0); }} }}
-  @keyframes pulse-glow {{ 0%,100% {{ opacity:1; box-shadow:0 0 20px rgba(96,165,250,.6); }} 50% {{ opacity:.7; box-shadow:0 0 30px rgba(96,165,250,.9); }} }}
+  @keyframes pulse-glow {{ 0%,100% {{ opacity:1; box-shadow:0 0 20px rgba({light_rgb},.6); }} 50% {{ opacity:.7; box-shadow:0 0 30px rgba({light_rgb},.9); }} }}
 </style>
 </head>
 <body style="margin:0;width:1280px;height:720px;overflow:hidden;
@@ -236,23 +254,23 @@ def _kpi_chart_slide_html(
 <div style="width:1280px;height:720px;background:white;display:flex;position:relative;">
 
   <!-- LEFT PANEL (dark blue) -->
-  <div style="width:50%;background:linear-gradient(135deg,#0a1628 0%,#1e3a8a 50%,#1e40af 100%);
+  <div style="width:50%;background:linear-gradient(135deg,{p.panel_start} 0%,{p.panel_mid} 50%,{p.panel_end} 100%);
       padding:32px 48px;color:white;position:relative;z-index:10;overflow:hidden;">
     <div style="position:absolute;top:-50%;right:-50%;width:100%;height:100%;
-        background:radial-gradient(circle,rgba(96,165,250,.15) 0%,transparent 70%);"></div>
+        background:radial-gradient(circle,rgba({light_rgb},.15) 0%,transparent 70%);"></div>
     <div style="position:absolute;bottom:-30%;left:-30%;width:80%;height:80%;
-        background:radial-gradient(circle,rgba(147,197,253,.1) 0%,transparent 60%);"></div>
+        background:radial-gradient(circle,rgba({muted_rgb},.1) 0%,transparent 60%);"></div>
 
     {breadcrumb_html}
     <h1 style="font-size:34px;font-weight:900;margin-bottom:12px;line-height:1.25;">{kpi_name if not breadcrumb else title}</h1>
-    {"" if breadcrumb else f'<p style="font-size:13px;font-weight:500;margin-bottom:10px;color:#dbeafe;">{title}</p>'}
-    <p style="font-size:12px;color:#93c5fd;line-height:1.6;margin-bottom:14px;">{description}</p>
-    <div style="width:96px;height:4px;background:linear-gradient(to right,#60a5fa,#22d3ee,#3b82f6);
+    {"" if breadcrumb else f'<p style="font-size:13px;font-weight:500;margin-bottom:10px;color:{p.text_soft};">{title}</p>'}
+    <p style="font-size:12px;color:{p.text_muted};line-height:1.6;margin-bottom:14px;">{description}</p>
+    <div style="width:96px;height:4px;background:linear-gradient(to right,{p.light},{p.accent},{p.secondary});
         margin-bottom:20px;border-radius:9999px;"></div>
 
     <!-- Latest value — solid colour (no gradient-clip) -->
-    <div style="font-size:64px;font-weight:900;color:#60a5fa;margin-bottom:8px;
-        text-shadow:0 2px 8px rgba(96,165,250,.4);">{latest_fmt}</div>
+    <div style="font-size:64px;font-weight:900;color:{p.light};margin-bottom:8px;
+        text-shadow:0 2px 8px rgba({light_rgb},.4);">{latest_fmt}</div>
     <h2 style="font-size:18px;font-weight:700;margin-bottom:24px;color:#f8fafc;">{latest_label}</h2>
 
     <!-- Mini sparkline -->
@@ -263,7 +281,7 @@ def _kpi_chart_slide_html(
     </div>
 
     <div style="position:absolute;top:32px;right:32px;width:16px;height:16px;
-        background:#22d3ee;border-radius:50%;animation:pulse-glow 2s ease-in-out infinite;"></div>
+        background:{p.accent};border-radius:50%;animation:pulse-glow 2s ease-in-out infinite;"></div>
   </div>
 
   <!-- RIGHT PANEL (light) -->
@@ -272,7 +290,7 @@ def _kpi_chart_slide_html(
       <h3 style="font-size:18px;font-weight:900;color:#1f2937;margin:0;">Performance Trend</h3>
       <div style="display:flex;align-items:center;gap:8px;background:white;padding:6px 12px;
           border-radius:9999px;box-shadow:0 1px 2px rgba(0,0,0,.05);">
-        <div style="width:10px;height:10px;border-radius:50%;background:linear-gradient(to right,#3b82f6,#2563eb);"></div>
+        <div style="width:10px;height:10px;border-radius:50%;background:linear-gradient(to right,{p.secondary},{p.primary});"></div>
         <span style="font-size:12px;font-weight:700;color:#374151;">{kpi_name}</span>
       </div>
     </div>
@@ -293,7 +311,7 @@ def _kpi_chart_slide_html(
   </div>
 
   <div style="position:absolute;bottom:0;left:0;right:0;height:6px;
-      background:linear-gradient(to right,#2563eb,#06b6d4,#2563eb);"></div>
+      background:linear-gradient(to right,{p.primary},{p.accent_strong},{p.primary});"></div>
 </div>
 
 <script>
@@ -321,25 +339,25 @@ window.addEventListener('load', function() {{
       {{
         label: cpLabel,
         data: cpValues,
-        backgroundColor: '#93c5fd',
+        backgroundColor: '{p.chart_compare}',
         borderRadius: 4,
         borderSkipped: false,
       }},
       {{
         label: tpLabel,
         data: values,
-        backgroundColor: '#2563eb',
+        backgroundColor: '{p.primary}',
         borderRadius: 4,
         borderSkipped: false,
       }}
     ] : [{{
       label: '{kpi_name}',
       data: values,
-      borderColor: '#2563eb',
-      backgroundColor: '{chart_type}' === 'bar' ? '#2563eb' : 'rgba(37,99,235,.1)',
+      borderColor: '{p.primary}',
+      backgroundColor: '{chart_type}' === 'bar' ? '{p.primary}' : 'rgba({primary_rgb},.1)',
       borderWidth: 3,
       pointRadius: 5,
-      pointBackgroundColor: '#2563eb',
+      pointBackgroundColor: '{p.primary}',
       pointBorderColor: '#fff',
       pointBorderWidth: 2,
       tension: 0.4,
@@ -357,9 +375,9 @@ window.addEventListener('load', function() {{
           legend: {{ display: hasComp, position: 'top', labels: {{ font: {{ size: 9 }}, boxWidth: 12 }} }},
           datalabels: {{
             display: true, align: 'top', anchor: 'end', offset: 4,
-            color: '#1e40af',
+            color: '{p.chart_label}',
             backgroundColor: 'rgba(255,255,255,.95)',
-            borderRadius: 4, borderWidth: 1, borderColor: '#3b82f6',
+            borderRadius: 4, borderWidth: 1, borderColor: '{p.secondary}',
             padding: 3,
             font: {{ size: 9, weight: '800' }},
             formatter: fmtVal,
@@ -378,7 +396,7 @@ window.addEventListener('load', function() {{
     // Secondary bar chart — show comparison side-by-side too, or single series
     const barCtx = document.getElementById('barChart').getContext('2d');
     const barDatasets = hasComp ? [
-      {{ label: cpLabel, data: cpValues, backgroundColor: '#93c5fd', borderRadius: 4 }},
+      {{ label: cpLabel, data: cpValues, backgroundColor: '{p.chart_compare}', borderRadius: 4 }},
       {{ label: tpLabel, data: values,   backgroundColor: {bar_bg},  borderRadius: 4 }}
     ] : [{{ data: values, backgroundColor: {bar_bg}, borderRadius: 4 }}];
 
@@ -405,8 +423,8 @@ window.addEventListener('load', function() {{
         labels: labels,
         datasets: [{{
           data: values,
-          borderColor: '#60a5fa',
-          backgroundColor: 'rgba(96,165,250,.2)',
+          borderColor: '{p.light}',
+          backgroundColor: 'rgba({light_rgb},.2)',
           borderWidth: 3, pointRadius: 0, tension: 0.4, fill: true
         }}]
       }},
@@ -424,13 +442,15 @@ window.addEventListener('load', function() {{
 </html>"""
 
 
-def _kpi_text_slide_html(slide: SlidePayload) -> str:
+def _kpi_text_slide_html(slide: SlidePayload, p: ReportPalette) -> str:
     """Text-only KPI slide (when no root causes have chart data)."""
+    light_rgb = _rgb(p.light)
+    muted_rgb = _rgb(p.text_muted)
     bullets_html = "".join([
         f'''<div style="display:flex;align-items:start;background:white;border-radius:8px;padding:14px;
                 box-shadow:0 1px 2px rgba(0,0,0,.05);margin-bottom:10px;">
               <div style="flex-shrink:0;width:28px;height:28px;border-radius:8px;
-                  background:linear-gradient(135deg,#3b82f6,#2563eb);display:flex;align-items:center;
+                  background:linear-gradient(135deg,{p.secondary},{p.primary});display:flex;align-items:center;
                   justify-content:center;margin-right:14px;">
                 <svg style="width:14px;height:14px;color:white;" fill="currentColor" viewBox="0 0 20 20">
                   <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
@@ -451,18 +471,18 @@ def _kpi_text_slide_html(slide: SlidePayload) -> str:
 <div style="width:1280px;height:720px;background:white;display:flex;position:relative;">
 
   <!-- LEFT PANEL -->
-  <div style="width:50%;background:linear-gradient(135deg,#0a1628 0%,#1e3a8a 50%,#1e40af 100%);
+  <div style="width:50%;background:linear-gradient(135deg,{p.panel_start} 0%,{p.panel_mid} 50%,{p.panel_end} 100%);
       padding:40px 56px;color:white;position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:center;">
     <div style="position:absolute;top:-50%;right:-50%;width:100%;height:100%;
-        background:radial-gradient(circle,rgba(96,165,250,.15) 0%,transparent 70%);"></div>
+        background:radial-gradient(circle,rgba({light_rgb},.15) 0%,transparent 70%);"></div>
 
-    <div style="display:inline-block;padding:6px 16px;background:rgba(96,165,250,.2);
-        border-radius:9999px;margin-bottom:20px;border:1px solid rgba(147,197,253,.3);">
-      <span style="color:#dbeafe;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.1em;">METRIC ANALYSIS</span>
+    <div style="display:inline-block;padding:6px 16px;background:rgba({light_rgb},.2);
+        border-radius:9999px;margin-bottom:20px;border:1px solid rgba({muted_rgb},.3);">
+      <span style="color:{p.text_soft};font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.1em;">METRIC ANALYSIS</span>
     </div>
     <h1 style="font-size:40px;font-weight:900;margin-bottom:16px;line-height:1.2;">{slide.kpi_name}</h1>
-    <div style="width:96px;height:4px;background:linear-gradient(to right,#60a5fa,#22d3ee);margin-bottom:24px;border-radius:9999px;"></div>
-    <p style="font-size:16px;color:#dbeafe;line-height:1.65;margin:0;">{slide.description}</p>
+    <div style="width:96px;height:4px;background:linear-gradient(to right,{p.light},{p.accent});margin-bottom:24px;border-radius:9999px;"></div>
+    <p style="font-size:16px;color:{p.text_soft};line-height:1.65;margin:0;">{slide.description}</p>
   </div>
 
   <!-- RIGHT PANEL -->
@@ -473,7 +493,7 @@ def _kpi_text_slide_html(slide: SlidePayload) -> str:
   </div>
 
   <div style="position:absolute;bottom:0;left:0;right:0;height:6px;
-      background:linear-gradient(to right,#2563eb,#06b6d4,#2563eb);"></div>
+      background:linear-gradient(to right,{p.primary},{p.accent_strong},{p.primary});"></div>
 </div>
 </body>
 </html>"""
@@ -488,8 +508,9 @@ async def generate_pdf_from_slides(request: GeneratePDFRequest) -> str:
     """
     # Build ordered page list: (html, has_chart)
     html_pages: List[tuple[str, bool]] = []
+    palette = request.palette or ReportPalette()
 
-    html_pages.append((_title_html(request), False))
+    html_pages.append((_title_html(request, palette), False))
 
     for slide in request.slides:
         rc_with_charts = [rc for rc in slide.root_causes if rc.chart_data is not None]
@@ -504,10 +525,11 @@ async def generate_pdf_from_slides(request: GeneratePDFRequest) -> str:
                 description=slide.description,
                 bullet_points=slide.bullet_points,
                 chart_data=kpi_chart,
+                p=palette,
             )
             html_pages.append((html, True))
         else:
-            html_pages.append((_kpi_text_slide_html(slide), False))
+            html_pages.append((_kpi_text_slide_html(slide, palette), False))
 
         for rc in slide.root_causes:
             if rc.chart_data is None:
@@ -518,6 +540,7 @@ async def generate_pdf_from_slides(request: GeneratePDFRequest) -> str:
                 description=rc.description,
                 bullet_points=rc.bullet_points,
                 chart_data=rc.chart_data,
+                p=palette,
                 breadcrumb=f"← {slide.kpi_name} / Root Cause",
             )
             html_pages.append((html, True))

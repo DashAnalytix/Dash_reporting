@@ -1,8 +1,9 @@
 """
 Financial data models for report generation.
 """
+import re
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 
 
@@ -117,6 +118,50 @@ class SlidePayload(BaseModel):
     root_causes: List[RootCauseSlide] = []
 
 
+HEX_COLOUR = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+class ReportPalette(BaseModel):
+    """
+    Theme colours for the PDF. Defaults are the Classic Blue look, so a request
+    without a palette renders as it always has. Neutrals (white, greys) are not themed.
+    """
+    cover_start: str = "#061551"
+    cover_mid: str = "#0a4d8f"
+    cover_end: str = "#0e68b3"
+    panel_start: str = "#0a1628"
+    panel_mid: str = "#1e3a8a"
+    panel_end: str = "#1e40af"
+    primary: str = "#2563eb"
+    secondary: str = "#3b82f6"
+    light: str = "#60a5fa"
+    accent: str = "#22d3ee"
+    accent_strong: str = "#06b6d4"
+    accent_soft: str = "#67e8f9"
+    text_soft: str = "#dbeafe"
+    text_mid: str = "#bfdbfe"
+    text_muted: str = "#93c5fd"
+    chart_compare: str = "#93c5fd"
+    chart_label: str = "#1e40af"
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def use_default_when_invalid(cls, value, info):
+        """
+        Colours are written straight into the slide HTML, so only #rrggbb may pass.
+
+        Args:
+            value: The colour sent by the client.
+            info: Pydantic context holding the field name.
+
+        Returns:
+            The colour, or the field's default when it is not a valid #rrggbb value.
+        """
+        if isinstance(value, str) and HEX_COLOUR.match(value):
+            return value
+        return cls.model_fields[info.field_name].default
+
+
 class GeneratePDFRequest(BaseModel):
     financial_text: str
     report_title: str
@@ -130,6 +175,7 @@ class GeneratePDFRequest(BaseModel):
     dash_logo: bool = True
     company_name: Optional[str] = ""
     logo_url: Optional[str] = ""
+    palette: Optional[ReportPalette] = None
     slides: List[SlidePayload]
 
 
