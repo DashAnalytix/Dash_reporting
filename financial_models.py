@@ -58,13 +58,30 @@ class FinancialReportData(BaseModel):
 
 # ── New frontend-contract models ──────────────────────────────────────────────
 
+CHART_TYPES = {"bar", "line", "area"}
+
+
 class ChartData(BaseModel):
     labels: List[str]
     values: List[float]
-    chart_type: str  # "bar" or "line"
+    chart_type: str  # "bar", "line" or "area"
     cp_values: Optional[List[float]] = None  # comparison period values
     cp_label: Optional[str] = None           # comparison period label (e.g. "Dec 25")
     tp_label: Optional[str] = None           # target/selected period label (e.g. "Jan 26")
+
+    @field_validator("chart_type", mode="before")
+    @classmethod
+    def use_bar_when_unknown(cls, value):
+        """
+        The chart type is written straight into the slide's script, so only known types may pass.
+
+        Args:
+            value: The chart type sent by the client.
+
+        Returns:
+            The chart type, or "bar" when it is not a known type.
+        """
+        return value if value in CHART_TYPES else "bar"
 
 
 class RootCauseInput(BaseModel):

@@ -197,6 +197,8 @@ def _kpi_chart_slide_html(
     labels_json = json.dumps(chart_data.labels)
     values_json = json.dumps(chart_data.values)
     chart_type  = chart_data.chart_type
+    # Chart.js has no "area" type: an area chart is a line chart with a fill.
+    chart_js_type = "bar" if chart_type == "bar" else "line"
     has_comparison = bool(chart_data.cp_values)
 
     # Derive a "latest value" to show prominently on left panel
@@ -361,12 +363,12 @@ window.addEventListener('load', function() {{
       pointBorderColor: '#fff',
       pointBorderWidth: 2,
       tension: 0.4,
-      fill: '{chart_type}' !== 'bar',
+      fill: '{chart_type}' === 'area',
       borderRadius: 4,
     }}];
 
     new Chart(ctx, {{
-      type: hasComp ? 'bar' : '{chart_type}',
+      type: hasComp ? 'bar' : '{chart_js_type}',
       data: {{ labels: labels, datasets: mainDatasets }},
       options: {{
         responsive: true, maintainAspectRatio: false,
